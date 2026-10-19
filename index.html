@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prancheta Tática - Santa Cruz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111;
+            color: #fff;
+            overflow: hidden; /* Evita scroll indesejado no celular */
+            touch-action: none; /* Previne gestos de navegação */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Layout do Campo */
+        .field-bg {
+            background-color: #1e5631; /* Verde Clássico */
+            position: relative;
+            overflow: hidden;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            margin: 8px;
+            border-radius: 8px;
+        }
+
+        /* Linhas do Campo */
+        .line-white { border: 2px solid rgba(255, 255, 255, 0.6); position: absolute; }
+        .halfway-line { width: 100%; height: 0; top: 50%; left: 0; }
+        .center-circle { width: 80px; height: 80px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+        .center-dot { width: 6px; height: 6px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); position: absolute; }
+        .penalty-box-top { width: 60%; height: 15%; top: 0; left: 20%; border-top: none; }
+        .goal-box-top { width: 30%; height: 6%; top: 0; left: 35%; border-top: none; }
+        .penalty-arc-top { width: 40px; height: 20px; border-radius: 0 0 40px 40px; border-top: none; top: 15%; left: 50%; transform: translateX(-50%); }
+        
+        .penalty-box-bottom { width: 60%; height: 15%; bottom: 0; left: 20%; border-bottom: none; }
+        .goal-box-bottom { width: 30%; height: 6%; bottom: 0; left: 35%; border-bottom: none; }
+        .penalty-arc-bottom { width: 40px; height: 20px; border-radius: 40px 40px 0 0; border-bottom: none; bottom: 15%; left: 50%; transform: translateX(-50%); }
+
+        /* Marca d'água */
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: auto;
+            opacity: 0.15;
+            pointer-events: none;
+            object-fit: contain;
+        }
+
+        /* Contêiner da Peça */
+        .player-container {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 54px;
+            height: 74px;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            cursor: grab;
+        }
+
+        .player-container.dragging {
+            z-index: 100;
+            cursor: grabbing;
+            opacity: 0.9;
+            transform: translate(-50%, -50%) scale(1.15); /* Aumenta ao segurar */
+            transition: transform 0.1s;
+        }
+
+        /* Peça Santa Cruz: Metade Vermelha, Metade Preta */
+        .player-piece {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 2px solid white;
+            background: linear-gradient(90deg, #d32f2f 50%, #000000 50%);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.6);
+            position: relative;
+        }
+
+        /* Nome do Jogador - Quebra de linha ativada */
+        .player-name {
+            background-color: rgba(0, 0, 0, 0.85);
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin-top: 4px;
+            max-width: 120px;
+            text-align: center;
+            line-height: 1.1;
+            word-wrap: break-word; /* Permite quebrar linha */
+            white-space: normal;
+            text-shadow: 1px 1px 0 #000;
+            pointer-events: none;
+        }
+
+        /* Braçadeira de Capitão */
+        .captain-badge {
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background-color: #ffd700;
+            color: #000;
+            font-size: 11px;
+            font-weight: bold;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+
+        /* Botão Adicionar Reserva */
+        .add-player-btn {
+            min-width: 50px;
+            height: 70px;
+            border: 2px dashed #666;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #aaa;
+            font-size: 32px;
+            flex-shrink: 0;
+            transition: all 0.2s;
+            margin-left: 8px;
+            margin-right: 8px;
+        }
+        .add-player-btn:active {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Banco de Reservas */
+        #bench::-webkit-scrollbar { height: 6px; }
+        #bench::-webkit-scrollbar-track { background: #111; }
+        #bench::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+
+        /* Modais e Overlays */
+        .modal-overlay {
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(3px);
+        }
+        
+        .toast-enter {
+            animation: slideDown 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        
+        @keyframes slideDown {
+            from { transform: translateY(-150%) translateX(-50%); opacity: 0; }
+            to { transform: translateY(0) translateX(-50%); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen">
+
+    <!-- Cabeçalho e Controles -->
+    <header class="flex-none bg-black p-2 shadow-lg z-20 relative border-b border-gray-800">
+        <div class="flex justify-between items-center mb-2">
+            <h1 class="text-white font-bold text-lg tracking-tight flex items-center gap-2">
+                <div class="w-4 h-4 rounded-full bg-gradient-to-r from-red-600 to-black border border-white shadow-sm"></div>
+                SANTA CRUZ
+            </h1>
+            <div class="flex gap-2">
+                <button onclick="resetBoard()" class="bg-gray-800 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-gray-700 transition">
+                    Limpar
+                </button>
+                <button onclick="copyLink()" class="bg-red-600 text-white px-3 py-1.5 rounded text-xs font-semibold shadow-[0_0_12px_rgba(220,38,38,0.5)] hover:bg-red-500 transition active:scale-95">
+                    Copiar Link 🔗
+                </button>
+            </div>
+        </div>
+        
+        <!-- Formações -->
+        <div class="flex justify-between gap-1 overflow-x-auto pb-1">
+            <button onclick="applyFormation('3-4-3')" class="flex-1 bg-gray-900 border border-gray-700 text-gray-300 py-2 rounded text-xs font-bold active:bg-gray-700 transition">3-4-3</button>
+            <button onclick="applyFormation('4-4-2')" class="flex-1 bg-gray-900 border border-gray-700 text-gray-300 py-2 rounded text-xs font-bold active:bg-gray-700 transition">4-4-2</button>
+            <button onclick="applyFormation('5-3-2')" class="flex-1 bg-gray-900 border border-gray-700 text-gray-300 py-2 rounded text-xs font-bold active:bg-gray-700 transition">5-3-2</button>
+            <button onclick="applyFormation('4-3-3')" class="flex-1 bg-gray-900 border border-gray-700 text-gray-300 py-2 rounded text-xs font-bold active:bg-gray-700 transition">4-3-3</button>
+        </div>
+    </header>
+
+    <!-- Área Principal -->
+    <main class="flex-1 flex flex-col relative w-full h-full overflow-hidden" id="app-area">
+        
+        <!-- Campo -->
+        <div id="field" class="field-bg flex-1 w-[calc(100%-16px)]">
+            <!-- Imagem de Fundo (Escudo) -->
+            <img src="1000423937.jpg" alt="Santa Cruz" class="watermark" onerror="this.style.display='none'">
+            
+            <!-- Linhas -->
+            <div class="line-white halfway-line"></div>
+            <div class="line-white center-circle"></div>
+            <div class="center-dot"></div>
+            
+            <div class="line-white penalty-box-top"></div>
+            <div class="line-white goal-box-top"></div>
+            <div class="line-white penalty-arc-top"></div>
+            
+            <div class="line-white penalty-box-bottom"></div>
+            <div class="line-white goal-box-bottom"></div>
+            <div class="line-white penalty-arc-bottom"></div>
+        </div>
+
+        <!-- Banco de Reservas -->
+        <div id="bench" class="flex-none h-[115px] w-full flex p-2 items-center overflow-x-auto overflow-y-hidden bg-gradient-to-b from-gray-900 to-black border-t border-gray-800 relative z-10 flex-nowrap">
+            <!-- Os reservas vão aparecer aqui, seguido pelo botão + -->
+        </div>
+
+    </main>
+
+    <!-- Peça Fantasma para o Drag and Drop -->
+    <div id="drag-ghost" class="player-container dragging" style="display: none; position: fixed; pointer-events: none;">
+        <div class="player-piece">
+            <div id="ghost-captain" class="captain-badge" style="display: none;">C</div>
+        </div>
+        <div id="ghost-name" class="player-name">Name</div>
+    </div>
+
+    <!-- Modal de Edição -->
+    <div id="edit-modal" class="fixed inset-0 modal-overlay z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-full max-w-sm shadow-2xl transform transition-all scale-100">
+            <h3 class="text-white font-bold text-xl mb-4 text-center">Jogador</h3>
+            
+            <textarea id="player-name-input" rows="2" placeholder="Nome do Jogador" class="w-full bg-gray-800 text-white border border-gray-600 rounded px-3 py-2 mb-4 focus:outline-none focus:border-red-500 text-center resize-none"></textarea>
+            
+            <button id="btn-captain" class="w-full py-3 rounded mb-4 font-bold border transition flex items-center justify-center gap-2" onclick="toggleCaptainModal()">
+                <span class="w-6 h-6 rounded-full bg-yellow-400 text-black flex items-center justify-center text-sm">C</span>
+                Definir como Capitão
+            </button>
+            
+            <div class="flex gap-3 mt-4">
+                <button onclick="closeModal()" class="flex-1 py-3 rounded font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 transition">Cancelar</button>
+                <button onclick="savePlayer()" class="flex-1 py-3 rounded font-semibold text-white bg-red-600 hover:bg-red-700 shadow-[0_0_10px_rgba(220,38,38,0.4)] transition">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Aviso Toast (Substitui o alert para melhor experiência) -->
+    <div id="toast" class="fixed top-6 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-full shadow-2xl z-[100] hidden font-bold text-sm border-2 border-green-400 items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+        </svg>
+        Link copiado com sucesso!
+    </div>
+
+    <script>
+        // Estado da Aplicação
+        let players = [];
+        let editingPlayerId = null;
+        let tempCaptainStatus = false;
+
+        // Mapas de Formação (Coordenadas X, Y em %)
+        const formations = {
+            '4-4-2': [
+                {x: 50, y: 88}, // Goleiro
+                {x: 18, y: 70}, {x: 38, y: 75}, {x: 62, y: 75}, {x: 82, y: 70}, // Defesa
+                {x: 18, y: 45}, {x: 38, y: 50}, {x: 62, y: 50}, {x: 82, y: 45}, // Meio
+                {x: 35, y: 22}, {x: 65, y: 22} // Ataque
+            ],
+            '4-3-3': [
+                {x: 50, y: 88}, 
+                {x: 18, y: 70}, {x: 38, y: 75}, {x: 62, y: 75}, {x: 82, y: 70}, 
+                {x: 25, y: 48}, {x: 50, y: 53}, {x: 75, y: 48}, 
+                {x: 22, y: 22}, {x: 50, y: 16}, {x: 78, y: 22} 
+            ],
+            '3-4-3': [
+                {x: 50, y: 88}, 
+                {x: 25, y: 75}, {x: 50, y: 75}, {x: 75, y: 75}, 
+                {x: 18, y: 48}, {x: 38, y: 53}, {x: 62, y: 53}, {x: 82, y: 48}, 
+                {x: 22, y: 22}, {x: 50, y: 16}, {x: 78, y: 22} 
+            ],
+            '5-3-2': [
+                {x: 50, y: 88}, 
+                {x: 12, y: 65}, {x: 32, y: 75}, {x: 50, y: 78}, {x: 68, y: 75}, {x: 88, y: 65},
+                {x: 25, y: 48}, {x: 50, y: 53}, {x: 75, y: 48}, 
+                {x: 35, y: 22}, {x: 65, y: 22} 
+            ]
+        };
+
+        function init() {
+            if (window.location.hash.length > 2) {
+                loadFromHash();
+            } else {
+                generateDefaultTeam();
+            }
+            render();
+        }
+
+        function generateDefaultTeam() {
+            players = [];
+            let form = formations['4-4-2'];
+            // Inicia apenas com os 11 titulares
+            for (let i = 0; i < 11; i++) {
+                players.push({ 
+                    id: i, 
+                    name: '', 
+                    status: 'field', 
+                    x: form[i].x, 
+                    y: form[i].y, 
+                    isCaptain: i === 0 // Define o goleiro como capitão padrão apenas visualmente
+                });
+            }
+            updateURL();
+        }
+
+        function addBenchPlayer() {
+            const nextId = players.length > 0 ? Math.max(...players.map(p => p.id)) + 1 : 0;
+            players.push({ id: nextId, name: '', status: 'bench', x: 0, y: 0, isCaptain: false });
+            updateURL();
+            render();
+            
+            // Rola o scroll para mostrar o novo jogador e o botão de adicionar
+            setTimeout(() => {
+                const bench = document.getElementById('bench');
+                bench.scrollTo({ left: bench.scrollWidth, behavior: 'smooth' });
+            }, 50);
+        }
+
+        function resetBoard() {
+            // Limpa a URL e gera o time padrão
+            window.history.replaceState(null, null, ' ');
+            generateDefaultTeam();
+            render();
+        }
+
+        // --- Serialização na URL ---
+        function updateURL() {
+            try {
+                // Formato compacto para reduzir o tamanho da URL
+                const compact = players.map(p => [
+                    p.id, 
+                    p.name, 
+                    p.status === 'field' ? 1 : 0, 
+                    Math.round(p.x), 
+                    Math.round(p.y), 
+                    p.isCaptain ? 1 : 0
+                ]);
+                const str = JSON.stringify(compact);
+                const base64 = btoa(encodeURIComponent(str));
+                window.history.replaceState(null, null, '#' + base64);
+            } catch (e) {
+                console.error("Erro ao salvar na URL", e);
+            }
+        }
+
+        function loadFromHash() {
+            try {
+                const base64 = window.location.hash.substring(1);
+                const str = decodeURIComponent(atob(base64));
+                const compact = JSON.parse(str);
+                players = compact.map(arr => ({
+                    id: arr[0],
+                    name: arr[1] || '',
+                    status: arr[2] === 1 ? 'field' : 'bench',
+                    x: arr[3],
+                    y: arr[4],
+                    isCaptain: arr[5] === 1
+                }));
+            } catch (e) {
+                console.error("Hash inválido, resetando prancheta", e);
+                generateDefaultTeam();
+            }
+        }
+
+        function applyFormation(type) {
+            const formCoords = formations[type];
+            let fieldPlayers = players.filter(p => p.status === 'field');
+            
+            for (let i = 0; i < Math.min(fieldPlayers.length, formCoords.length); i++) {
+                fieldPlayers[i].x = formCoords[i].x;
+                fieldPlayers[i].y = formCoords[i].y;
+            }
+            updateURL();
+            render();
+        }
+
+        // --- Renderização ---
+        function render() {
+            const field = document.getElementById('field');
+            const bench = document.getElementById('bench');
+            
+            // Remove as peças antigas do DOM
+            document.querySelectorAll('.player-container:not(#drag-ghost)').forEach(el => el.remove());
+            const existingAddBtn = document.querySelector('.add-player-btn');
+            if (existingAddBtn) existingAddBtn.remove();
+
+            players.forEach(p => {
+                const el = document.createElement('div');
+                el.className = 'player-container';
+                el.dataset.id = p.id;
+                
+                let captainHTML = p.isCaptain ? `<div class="captain-badge">C</div>` : '';
+                
+                el.innerHTML = `
+                    <div class="player-piece">${captainHTML}</div>
+                    <div class="player-name">${p.name === '' ? '&nbsp;' : p.name.replace(/\n/g, '<br>')}</div>
+                `;
+
+                // Eventos de Toque e Mouse
+                el.addEventListener('mousedown', handleDragStart, {passive: false});
+                el.addEventListener('touchstart', handleDragStart, {passive: false});
+
+                if (p.status === 'field') {
+                    el.style.left = `${p.x}%`;
+                    el.style.top = `${p.y}%`;
+                    field.appendChild(el);
+                } else {
+                    el.style.position = 'relative';
+                    el.style.transform = 'none';
+                    el.style.margin = '0 8px';
+                    el.style.flexShrink = '0';
+                    bench.appendChild(el);
+                }
+            });
+
+            // Adiciona o botão '+' sempre no final do banco
+            const addBtn = document.createElement('div');
+            addBtn.className = 'add-player-btn';
+            addBtn.innerHTML = '+';
+            addBtn.onclick = addBenchPlayer;
+            bench.appendChild(addBtn);
+        }
+
+        // --- Lógica de Drag & Drop ---
+        let dragState = {
+            active: false,
+            el: null,
+            id: null,
+            startX: 0,
+            startY: 0,
+            startTime: 0
+        };
+
+        const ghost = document.getElementById('drag-ghost');
+
+        function handleDragStart(e) {
+            if (e.target.closest('.add-player-btn')) return; // Ignora o botão de add
+            
+            // Se for botão direito, ignora
+            if (e.type === 'mousedown' && e.button !== 0) return;
+
+            e.preventDefault(); 
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            dragState.active = true;
+            dragState.el = e.currentTarget;
+            dragState.id = parseInt(dragState.el.dataset.id);
+            dragState.startX = clientX;
+            dragState.startY = clientY;
+            dragState.startTime = Date.now();
+
+            const player = players.find(p => p.id === dragState.id);
+            document.getElementById('ghost-name').innerHTML = player.name === '' ? '&nbsp;' : player.name.replace(/\n/g, '<br>');
+            document.getElementById('ghost-captain').style.display = player.isCaptain ? 'flex' : 'none';
+            
+            ghost.style.display = 'flex';
+            ghost.style.left = `${clientX}px`;
+            ghost.style.top = `${clientY}px`;
+            
+            dragState.el.style.opacity = '0.2';
+
+            document.addEventListener('mousemove', handleDragMove, {passive: false});
+            document.addEventListener('touchmove', handleDragMove, {passive: false});
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchend', handleDragEnd);
+        }
+
+        function handleDragMove(e) {
+            if (!dragState.active) return;
+            e.preventDefault();
+
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            ghost.style.left = `${clientX}px`;
+            ghost.style.top = `${clientY}px`;
+        }
+
+        function handleDragEnd(e) {
+            if (!dragState.active) return;
+            
+            document.removeEventListener('mousemove', handleDragMove);
+            document.removeEventListener('touchmove', handleDragMove);
+            document.removeEventListener('mouseup', handleDragEnd);
+            document.removeEventListener('touchend', handleDragEnd);
+
+            dragState.active = false;
+            ghost.style.display = 'none';
+            dragState.el.style.opacity = '1';
+
+            const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+            const clientY = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+            const timeDiff = Date.now() - dragState.startTime;
+            const dist = Math.hypot(clientX - dragState.startX, clientY - dragState.startY);
+
+            // Se for um clique rápido, abre a edição
+            if (timeDiff < 300 && dist < 15) {
+                openModal(dragState.id);
+                return;
+            }
+
+            const player = players.find(p => p.id === dragState.id);
+            
+            // Oculta a peça sendo arrastada para ver o que tem embaixo
+            dragState.el.style.visibility = 'hidden';
+            const dropTarget = document.elementFromPoint(clientX, clientY);
+            dragState.el.style.visibility = 'visible';
+
+            if (!dropTarget) { render(); return; }
+
+            // 1. Troca de Posição (Swap)
+            const targetContainer = dropTarget.closest('.player-container');
+            if (targetContainer && targetContainer.dataset.id && parseInt(targetContainer.dataset.id) !== dragState.id) {
+                const targetId = parseInt(targetContainer.dataset.id);
+                const targetPlayer = players.find(p => p.id === targetId);
+                
+                const tempStatus = player.status;
+                const tempX = player.x;
+                const tempY = player.y;
+
+                player.status = targetPlayer.status;
+                player.x = targetPlayer.x;
+                player.y = targetPlayer.y;
+
+                targetPlayer.status = tempStatus;
+                targetPlayer.x = tempX;
+                targetPlayer.y = tempY;
+                
+                updateURL();
+                render();
+                return;
+            }
+
+            // 2. Soltou no Campo
+            const fieldRect = document.getElementById('field').getBoundingClientRect();
+            if (clientX >= fieldRect.left && clientX <= fieldRect.right && 
+                clientY >= fieldRect.top && clientY <= fieldRect.bottom) {
+                
+                let percentX = ((clientX - fieldRect.left) / fieldRect.width) * 100;
+                let percentY = ((clientY - fieldRect.top) / fieldRect.height) * 100;
+
+                percentX = Math.max(0, Math.min(100, percentX));
+                percentY = Math.max(0, Math.min(100, percentY));
+
+                player.status = 'field';
+                player.x = percentX;
+                player.y = percentY;
+                
+                updateURL();
+                render();
+                return;
+            }
+
+            // 3. Soltou no Banco
+            const benchRect = document.getElementById('bench').getBoundingClientRect();
+            if (clientY >= benchRect.top) {
+                player.status = 'bench';
+                updateURL();
+                render();
+                return;
+            }
+
+            render();
+        }
+
+        // --- Lógica do Modal ---
+        function openModal(id) {
+            editingPlayerId = id;
+            const player = players.find(p => p.id === id);
+            tempCaptainStatus = player.isCaptain;
+
+            document.getElementById('player-name-input').value = player.name;
+            updateCaptainBtnStyle();
+            
+            document.getElementById('edit-modal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('player-name-input').focus(), 50);
+        }
+
+        function toggleCaptainModal() {
+            tempCaptainStatus = !tempCaptainStatus;
+            updateCaptainBtnStyle();
+        }
+
+        function updateCaptainBtnStyle() {
+            const btn = document.getElementById('btn-captain');
+            if (tempCaptainStatus) {
+                btn.className = "w-full py-3 rounded mb-4 font-bold border transition flex items-center justify-center gap-2 bg-yellow-500/20 border-yellow-500 text-yellow-400";
+            } else {
+                btn.className = "w-full py-3 rounded mb-4 font-bold border transition flex items-center justify-center gap-2 bg-gray-800 border-gray-600 text-gray-400";
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('edit-modal').classList.add('hidden');
+            editingPlayerId = null;
+        }
+
+        function savePlayer() {
+            const name = document.getElementById('player-name-input').value.trim();
+            const player = players.find(p => p.id === editingPlayerId);
+            
+            player.name = name;
+
+            if (tempCaptainStatus) {
+                players.forEach(p => p.isCaptain = false); // Apenas um capitão
+                player.isCaptain = true;
+            } else {
+                player.isCaptain = false;
+            }
+
+            closeModal();
+            updateURL();
+            render();
+        }
+
+        // --- Copiar Link (Com Fallback Seguro) ---
+        function showSuccessMessage() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('hidden');
+            toast.classList.add('flex', 'toast-enter');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+                toast.classList.remove('flex', 'toast-enter');
+            }, 3000);
+        }
+
+        function copyLink() {
+            // Garante que a URL atualizada seja a que vamos copiar
+            updateURL(); 
+            const url = window.location.href;
+            
+            // Tentativa via API Moderna (Requer HTTPS)
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(() => {
+                    showSuccessMessage();
+                }).catch(() => {
+                    executeFallbackCopy(url);
+                });
+            } else {
+                // Fallback para quando o app roda de arquivo local ou sem HTTPS
+                executeFallbackCopy(url);
+            }
+        }
+
+        function executeFallbackCopy(textToCopy) {
+            const textArea = document.createElement("textarea");
+            textArea.value = textToCopy;
+            
+            // Posiciona fora da tela para não quebrar o layout
+            textArea.style.position = "fixed";
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.width = "2em";
+            textArea.style.height = "2em";
+            textArea.style.padding = "0";
+            textArea.style.border = "none";
+            textArea.style.outline = "none";
+            textArea.style.boxShadow = "none";
+            textArea.style.background = "transparent";
+            
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showSuccessMessage();
+                } else {
+                    console.error('Falha ao copiar no fallback');
+                }
+            } catch (err) {
+                console.error('Erro no fallback do clipboard', err);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+
+        // Iniciar
+        window.onload = init;
+
+    </script>
+</body>
+</html>
